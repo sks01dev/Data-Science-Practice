@@ -1,4 +1,4 @@
-# 📊 Pandas Basics Assignment: Data Analysis Pipeline
+# 📊 Pandas Basics Assignment: Data Analysis 
 
 This document summarizes the core tasks, data manipulation techniques, and essential Pandas functions used to complete the data analysis questions on the Russian retail data (Kaggle Final Project dataset).
 
