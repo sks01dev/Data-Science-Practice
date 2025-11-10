@@ -1,8 +1,6 @@
 # Data Science Practice
 
 This repository contains structured assignments for practicing data science and analytics concepts.  
-Each assignment focuses on a specific topic such as pandas, data preprocessing, visualization, or modeling.
-
 ---
 
 ## 📂 Repository Structure
