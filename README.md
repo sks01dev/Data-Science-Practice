@@ -1,6 +1,6 @@
 # Data Science Practice
 
-This repository contains structured assignments for practicing data science and analytics concepts.  
+This repository contains structured assignments for practicing data science concepts.  
 ---
 
 ## 📂 Repository Structure
