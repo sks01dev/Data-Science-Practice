@@ -1,70 +1,172 @@
-# 🏆 Structural Data Leakage
+# 🏆 Data Leakage via Graph Structure
 
-This guide summarizes the methodology used in the **Data Leakages** assignment. The key objective was to exploit a hidden structural flaw in the test data to achieve near-perfect classification accuracy **without using the training set**.
+## 🔍 1. Problem Setup
 
-***
+We observe pairs:
 
-## 1. The Core Leak Intuition: Structural Consistency
+```
+(FirstId, SecondId) → predict 0/1
+```
 
-The competition required predicting a binary label ($y \in \{0, 1\}$) for pairs of objects.
+No features.
+But **pairs themselves leak class structure**.
 
-* **The Flaw:** The test set contained numerous instances where physically distinct pairs of objects were **mathematically identical** in their structural feature profile.
-* **The Leak Rule:** If two pairs of objects, **Pair A** and **Pair B**, interact with the rest of the dataset in exactly the same way (they share the same "neighborhood" profile), then they **must share the same true classification label** ($y_A = y_B$).
+---
 
-We solved the problem as a **pattern matching exercise**, not a traditional machine learning task.
+## 🧠 2. Core Insight
 
-***
+Pairs implicitly define an **undirected graph**:
 
-## 2. Methodology: Graph Representation & Feature Engineering
+* **Nodes** = unique IDs
+* **Edges** = observed pairs
+* **Same-class items** → dense, similar neighborhoods
+* **Different-class items** → sparse, dissimilar neighborhoods
 
-The solution centers on modeling the pairs as an implicit graph structure to derive a powerful predictive feature: the **Shared Neighbor Count**.
+Thus labels leak through **graph topology**.
 
-### Step 1: Construct the Graph Structure (Adjacency Matrix)
+---
 
-We represent the entire network of relationships using an Adjacency Matrix.
+## 🏗 3. Adjacency Matrix (Sparse)
 
-* **Nodes:** The unique IDs of the objects involved.
-* **Edges:** An observed pair of objects (an entry in the data).
-* **Tool:** The sparse matrix format (`coo_matrix` or `csr_matrix`) is used due to the massive, sparse nature of the potential connections.
+For **N** unique IDs, build a sparse adjacency matrix **A**:
 
-| Structure | Goal | Shape |
-| :--- | :--- | :--- |
-| **Adjacency Matrix ($A$)** | Encodes all observed pairs: $A[i, j] = 1$ if $(i, j)$ is a pair. | $(N_{\text{unique IDs}}, N_{\text{unique IDs}})$ |
-| **Construction (Conceptual):** | Set $A[i, j]=1$ and $A[j, i]=1$ for every pair $(i, j)$ to ensure symmetry. | `scipy.sparse.coo_matrix` |
+* Shape: **N × N**
+* Symmetric
+* `A[i, j] = 1` if `(i, j)` is an observed pair
 
-### Step 2: The Magic Feature (Shared Neighbor Count)
+**Construction:**
 
-For every pair $(i, j)$ that needs to be scored, we calculate how many objects are connected to *both* $i$ and $j$.
+```python
+row = [FirstId, SecondId]
+col = [SecondId, FirstId]
 
-* **Feature Intuition:** A high count of shared neighbors implies a **stronger structural similarity**, which correlates directly with a positive label ($\mathbf{1}$).
-* **Formula (The Core Calculation, $f$):**
-    The shared neighbor count is calculated by the **dot product** of the two nodes' rows in the Adjacency Matrix:
-    $$f(i,j) = \mathbf{A}[i] \cdot \mathbf{A}[j] = \sum_k \mathbf{A}[i,k]\mathbf{A}[j,k]$$
-* **Resulting Score Shape ($f$):** $(M_{\text{test pairs}},)$
+A = coo_matrix((1, (row, col)), shape=(N, N)).tocsr()
+A.data[:] = 1
+```
 
-***
+Matrix must be **sparse** because N can be large (e.g., 26k × 26k).
 
-## 3. Leak Exploitation: Thresholding and Prediction
+---
 
-We exploit the known phenomenon that the simple score achieved by predicting "all $\mathbf{1}$s" reveals the true positive rate, which serves as the threshold boundary.
+## 🧬 4. Node Representation
 
-### Step 3: Threshold Selection
+Row **A[i]** is a **binary sparse vector** representing neighbors of node *i*.
 
-1.  **Calculate Positive Rate ($p$):** The fraction of positive labels in the test set is equivalent to the accuracy obtained by simply predicting $\mathbf{1}$ for everything. This value is obtained from the competition's leak/scoring.
-    $$p = \text{positive rate} \approx \text{accuracy}(\text{predict all 1s})$$
-2.  **Sort Scores:** Sort the shared neighbor scores ($f$) for all test pairs in descending order.
-3.  **Find Cutoff Index ($k$):** Determine the index where the fraction $p$ is reached.
-    $$k = \lfloor p \cdot M_{\text{test pairs}} \rfloor$$
-4.  **Set Threshold ($T$):** The threshold is the boundary value separating the top $k$ scores from the rest.
-    $$T = (\mathbf{f}_{\text{sorted}}[k] + \mathbf{f}_{\text{sorted}}[k+1]) / 2$$
+* Shape: **(1 × N)**
 
-### Step 4: Final Prediction
+This functions as a **graph embedding**.
 
-* **Prediction Rule:** Any pair with a shared neighbor count $f(i, j)$ greater than the threshold $T$ is predicted as $\mathbf{1}$, and all others are predicted as $\mathbf{0}$. This single classification rule achieves near-perfect accuracy.
+---
 
-| Object | Meaning | Shape |
-| :--- | :--- | :--- |
-| $\mathbf{A}$ | Adjacency Matrix | $(N_{\text{unique IDs}}, N_{\text{unique IDs}})$ Sparse |
-| $\mathbf{f}$ | Shared Neighbor Count Scores | $(M_{\text{test pairs}},)$ |
-| $\mathbf{y}_{\text{pred}}$ | Final Binary Labels | $(M_{\text{test pairs}},)$ |
+## 🔥 5. Magic Feature: Shared Neighbor Count
 
+For any pair **(i, j)**:
+
+[
+f(i, j) = A[i] \cdot A[j]
+= \sum_k A[i,k],A[j,k]
+]
+
+Interpretation:
+
+* **High f** → many shared neighbors → likely class **1**
+* **Low f** → few shared neighbors → likely class **0**
+
+Output shape:
+
+* **f: (M,)** where M = number of test pairs
+
+These values typically form **two clusters**, e.g., around 14 vs 20.
+
+---
+
+## 🎯 6. Threshold Selection (Critical)
+
+We must decide **which cluster** corresponds to label = 1.
+
+Compute:
+
+[
+p = \text{accuracy(all 1s)} = \text{fraction of positives in the test set}
+]
+
+Then:
+
+1. Sort scores **f** descending
+2. Assign **1** to the top **p × M** pairs
+3. Assign **0** to the rest
+
+Threshold:
+
+[
+k = \lfloor pM \rfloor
+]
+
+[
+T = \frac{f_{\text{sorted}}[k] + f_{\text{sorted}}[k+1]}{2}
+]
+
+Pairs with `f ≥ T` → predict **1**, else **0**.
+
+---
+
+## 📐 7. Shapes Summary
+
+| Object          | Meaning                | Shape         |
+| --------------- | ---------------------- | ------------- |
+| `test`          | input pairs            | (M, 3)        |
+| `A`             | adjacency matrix       | (N, N) sparse |
+| `rows_FirstId`  | node embeddings        | (M, N) sparse |
+| `rows_SecondId` | node embeddings        | (M, N) sparse |
+| `f`             | shared-neighbor scores | (M,)          |
+| `pred`          | final labels           | (M,)          |
+
+---
+
+## 🎓 8. General Formula Summary
+
+### **Adjacency:**
+
+[
+A[i,j] = 1 \quad \text{if pair}(i,j)
+]
+
+### **Shared Neighbor Feature:**
+
+[
+f(i,j) = \sum_k A[i,k]A[j,k]
+]
+
+### **Thresholding:**
+
+[
+p = \text{positive rate}, \qquad
+k = \lfloor pM \rfloor
+]
+
+[
+T = \frac{f_{\text{sorted}}[k] + f_{\text{sorted}}[k+1]}{2}
+]
+
+---
+
+## 🚀 9. Where This Applies
+
+Use this method when:
+
+* You have **pair-based prediction** tasks
+* IDs appear multiple times
+* Graph structure is implicit
+* Test set is **not** randomly sampled
+* No/weak features are available
+* Score histogram shows **two clusters**
+
+Typical applications:
+
+* Quora duplicate question detection
+* Product matching / entity resolution
+* Image pair verification
+* Session or user linking
+* Link prediction with leakage
+
+---
