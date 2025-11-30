@@ -1,4 +1,4 @@
-# 🏆 Structural Data Leakage: Master Revision Guide
+# 🏆 Structural Data Leakage
 
 This guide summarizes the methodology used in the **Data Leakages** assignment. The key objective was to exploit a hidden structural flaw in the test data to achieve near-perfect classification accuracy **without using the training set**.
 
