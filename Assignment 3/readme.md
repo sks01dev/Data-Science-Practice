@@ -55,12 +55,12 @@ If you compute category means using the **same data you encode**, the model indi
 **What it does**
 - For each row, compute the category mean **excluding that row**
 
-**Formula (GitHub-safe LaTeX):**
-```latex
+**Formula:**
+
 $$
 \text{LOO}_j = \frac{\sum y_c - y_j}{N_c - 1}
 $$
-````
+
 
 Where:
 
@@ -86,13 +86,11 @@ Blend category mean with global mean.
 
 **Formula:**
 
-```latex
 $$
 \text{Encoded}(c) =
 \frac{\text{Mean}(c) \cdot N_c + \alpha \cdot \text{GlobalMean}}
 {N_c + \alpha}
 $$
-```
 
 **Key points**
 
